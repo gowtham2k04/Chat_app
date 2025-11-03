@@ -416,14 +416,53 @@
             position: fixed;
             top: 10px;
             left: 10px;
-            background: rgba(0,0,0,0.8);
-            color: white;
-            padding: 8px;
+            background: rgba(0,0,0,0.9);
+            color: #00ff00;
+            padding: 10px;
             border-radius: 4px;
-            font-size: 12px;
+            font-size: 11px;
             font-family: monospace;
             z-index: 10000;
-            max-width: 300px;
+            max-width: 350px;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+
+        .debug-info.hidden {
+            display: none;
+        }
+
+        /* Profile Modal */
+        .profile-avatar {
+            width: 100px;
+            height: 100px;
+            border-radius: 50%;
+            object-fit: cover;
+        }
+
+        .profile-info {
+            text-align: center;
+            padding: 20px 0;
+        }
+
+        .profile-status {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: 500;
+        }
+
+        .profile-status.online {
+            background: #dcfce7;
+            color: #166534;
+        }
+
+        .profile-status.offline {
+            background: #f3f4f6;
+            color: #6b7280;
         }
     </style>
 </head>
@@ -498,8 +537,8 @@
         <div id="sidebar" class="sidebar w-96 bg-white border-r border-gray-200 flex flex-col">
             <!-- Profile Header -->
             <div class="chat-header p-4 flex items-center justify-between">
-                <div class="flex items-center gap-3">
-                    <img id="userAvatar" src="https://picsum.photos/seed/user1/40/40" alt="Profile" class="w-10 h-10 rounded-full cursor-pointer hover:opacity-80">
+                <div class="flex items-center gap-3 cursor-pointer" onclick="showProfileModal()">
+                    <img id="userAvatar" src="https://picsum.photos/seed/user1/40/40" alt="Profile" class="w-10 h-10 rounded-full hover:opacity-80">
                     <div>
                         <h3 id="userName" class="font-semibold">User</h3>
                         <p id="userStatus" class="text-xs text-gray-500">Online</p>
@@ -602,6 +641,47 @@
         </div>
     </div>
 
+    <!-- Profile Modal -->
+    <div id="profileModal" class="modal hidden">
+        <div class="modal-content">
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="text-xl font-semibold">Profile</h3>
+                <button onclick="hideProfileModal()" class="text-gray-500 hover:text-gray-700">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="profile-info">
+                <img id="profileAvatar" src="https://picsum.photos/seed/user1/100/100" alt="Profile" class="profile-avatar mx-auto mb-4">
+                <h4 id="profileName" class="text-lg font-semibold">User Name</h4>
+                <p id="profileEmail" class="text-sm text-gray-500">user@example.com</p>
+                <div id="profileStatusBadge" class="profile-status online mt-2">
+                    <i class="fas fa-circle text-xs"></i>
+                    <span>Online</span>
+                </div>
+            </div>
+            <div class="border-t pt-4 mt-4">
+                <div class="space-y-3">
+                    <div class="flex justify-between">
+                        <span class="text-gray-600">Member since</span>
+                        <span id="profileMemberSince" class="text-sm">-</span>
+                    </div>
+                    <div class="flex justify-between">
+                        <span class="text-gray-600">Last seen</span>
+                        <span id="profileLastSeen" class="text-sm">-</span>
+                    </div>
+                </div>
+            </div>
+            <div class="mt-6 space-y-2">
+                <button onclick="editProfile()" class="w-full bg-blue-500 text-white py-2 rounded-lg hover:bg-blue-600 transition">
+                    <i class="fas fa-edit mr-2"></i>Edit Profile
+                </button>
+                <button onclick="hideProfileModal()" class="w-full bg-gray-200 text-gray-700 py-2 rounded-lg hover:bg-gray-300 transition">
+                    Close
+                </button>
+            </div>
+        </div>
+    </div>
+
     <!-- New Chat Modal -->
     <div id="newChatModal" class="modal hidden">
         <div class="modal-content">
@@ -629,7 +709,7 @@
     <div id="menuModal" class="modal hidden">
         <div class="modal-content">
             <div class="space-y-2">
-                <div class="p-3 hover:bg-gray-100 rounded cursor-pointer" onclick="showProfile()">
+                <div class="p-3 hover:bg-gray-100 rounded cursor-pointer" onclick="showProfileModal()">
                     <i class="fas fa-user mr-2"></i> Profile
                 </div>
                 <div class="p-3 hover:bg-gray-100 rounded cursor-pointer" onclick="toggleDarkMode()">
@@ -637,6 +717,9 @@
                 </div>
                 <div class="p-3 hover:bg-gray-100 rounded cursor-pointer" onclick="toggleDebug()">
                     <i class="fas fa-bug mr-2"></i> Debug Info
+                </div>
+                <div class="p-3 hover:bg-gray-100 rounded cursor-pointer" onclick="refreshContacts()">
+                    <i class="fas fa-sync mr-2"></i> Refresh Contacts
                 </div>
                 <div class="p-3 hover:bg-gray-100 rounded cursor-pointer" onclick="logout()">
                     <i class="fas fa-sign-out-alt mr-2"></i> Logout
@@ -692,25 +775,29 @@
             const debugInfo = document.getElementById('debugInfo');
             debugInfo.innerHTML = `
                 <div><strong>Current User:</strong> ${currentUser?.id || 'Not logged in'}</div>
+                <div><strong>Username:</strong> ${currentUser?.user_metadata?.username || 'N/A'}</div>
                 <div><strong>Contacts Loaded:</strong> ${contacts.length}</div>
                 <div><strong>Chats Loaded:</strong> ${chats.length}</div>
                 <div><strong>Current Chat:</strong> ${currentChat?.id || 'None'}</div>
                 <div><strong>Realtime:</strong> ${realtimeChannel ? 'Connected' : 'Disconnected'}</div>
+                <div><strong>Time:</strong> ${new Date().toLocaleTimeString()}</div>
             `;
         }
 
         // Authentication Functions
         async function checkAuth() {
             try {
+                logDebug('Checking authentication...');
                 const { data: { user }, error } = await supabase.auth.getUser();
                 
                 if (error) {
-                    console.error('Auth check error:', error);
+                    logDebug('Auth check error: ' + error.message);
                     showAuthScreen();
                     return;
                 }
                 
                 if (user) {
+                    logDebug('User authenticated: ' + user.id);
                     currentUser = user;
                     showChatApp();
                     await loadUserData();
@@ -718,10 +805,11 @@
                     await updateUserOnlineStatus(true);
                     setupRealtimeSubscriptions();
                 } else {
+                    logDebug('No user authenticated');
                     showAuthScreen();
                 }
             } catch (error) {
-                console.error('Auth check error:', error);
+                logDebug('Auth check error: ' + error.message);
                 showAuthScreen();
             }
         }
@@ -736,6 +824,7 @@
             }
 
             try {
+                logDebug('Attempting login for: ' + email);
                 const { data, error } = await supabase.auth.signInWithPassword({
                     email: email,
                     password: password
@@ -743,6 +832,7 @@
 
                 if (error) throw error;
 
+                logDebug('Login successful');
                 currentUser = data.user;
                 showChatApp();
                 await loadUserData();
@@ -751,6 +841,7 @@
                 setupRealtimeSubscriptions();
                 showNotification('Login successful!', 'success');
             } catch (error) {
+                logDebug('Login error: ' + error.message);
                 showNotification(error.message, 'error');
             }
         }
@@ -766,6 +857,7 @@
             }
 
             try {
+                logDebug('Attempting registration for: ' + email);
                 const { data, error } = await supabase.auth.signUp({
                     email: email,
                     password: password,
@@ -779,17 +871,24 @@
                 if (error) throw error;
 
                 // Create user profile
-                const { error: profileError } = await supabase.from('profiles').insert({
+                const profileData = {
                     id: data.user.id,
                     username: username,
                     email: email,
                     avatar_url: `https://picsum.photos/seed/${data.user.id}/200/200`,
                     is_online: true,
                     last_seen: new Date().toISOString()
-                });
+                };
+
+                logDebug('Creating profile: ' + JSON.stringify(profileData));
+                
+                const { error: profileError } = await supabase.from('profiles').insert(profileData);
 
                 if (profileError) {
+                    logDebug('Profile creation error: ' + profileError.message);
                     console.error('Profile creation error:', profileError);
+                } else {
+                    logDebug('Profile created successfully');
                 }
 
                 currentUser = data.user;
@@ -800,6 +899,7 @@
                 setupRealtimeSubscriptions();
                 showNotification('Registration successful!', 'success');
             } catch (error) {
+                logDebug('Registration error: ' + error.message);
                 showNotification(error.message, 'error');
             }
         }
@@ -843,6 +943,7 @@
             if (!currentUser) return;
 
             try {
+                logDebug('Loading user data...');
                 const { data: profile, error } = await supabase
                     .from('profiles')
                     .select('*')
@@ -850,16 +951,67 @@
                     .single();
 
                 if (error) {
-                    console.error('Profile load error:', error);
+                    logDebug('Profile load error: ' + error.message);
+                    // Try to create profile if it doesn't exist
+                    if (error.code === 'PGRST116') {
+                        await createMissingProfile();
+                    }
                     return;
                 }
 
                 if (profile) {
-                    document.getElementById('userName').textContent = profile.username;
-                    document.getElementById('userAvatar').src = profile.avatar_url;
+                    logDebug('Profile loaded: ' + profile.username);
+                    updateUserUI(profile);
                 }
             } catch (error) {
-                console.error('Profile load error:', error);
+                logDebug('Profile load error: ' + error.message);
+            }
+        }
+
+        async function createMissingProfile() {
+            try {
+                const profileData = {
+                    id: currentUser.id,
+                    username: currentUser.user_metadata?.username || 'User_' + currentUser.id.substring(0, 8),
+                    email: currentUser.email,
+                    avatar_url: `https://picsum.photos/seed/${currentUser.id}/200/200`,
+                    is_online: true,
+                    last_seen: new Date().toISOString()
+                };
+
+                logDebug('Creating missing profile: ' + JSON.stringify(profileData));
+                
+                const { data, error } = await supabase.from('profiles').insert(profileData).select().single();
+                
+                if (error) {
+                    logDebug('Profile creation error: ' + error.message);
+                } else {
+                    logDebug('Missing profile created successfully');
+                    updateUserUI(data);
+                }
+            } catch (error) {
+                logDebug('Error creating missing profile: ' + error.message);
+            }
+        }
+
+        function updateUserUI(profile) {
+            document.getElementById('userName').textContent = profile.username;
+            document.getElementById('userAvatar').src = profile.avatar_url;
+            document.getElementById('userStatus').textContent = profile.is_online ? 'Online' : 'Offline';
+            
+            // Update profile modal
+            document.getElementById('profileName').textContent = profile.username;
+            document.getElementById('profileEmail').textContent = profile.email;
+            document.getElementById('profileAvatar').src = profile.avatar_url;
+            document.getElementById('profileMemberSince').textContent = new Date(profile.created_at).toLocaleDateString();
+            
+            const statusBadge = document.getElementById('profileStatusBadge');
+            if (profile.is_online) {
+                statusBadge.className = 'profile-status online mt-2';
+                statusBadge.innerHTML = '<i class="fas fa-circle text-xs"></i><span>Online</span>';
+            } else {
+                statusBadge.className = 'profile-status offline mt-2';
+                statusBadge.innerHTML = '<i class="fas fa-circle text-xs"></i><span>Offline</span>';
             }
         }
 
@@ -874,8 +1026,10 @@
                         last_seen: new Date().toISOString()
                     })
                     .eq('id', currentUser.id);
+                
+                logDebug('Updated online status: ' + isOnline);
             } catch (error) {
-                console.error('Error updating online status:', error);
+                logDebug('Error updating online status: ' + error.message);
             }
         }
 
@@ -921,16 +1075,16 @@
                 .subscribe((status) => {
                     if (status === 'SUBSCRIBED') {
                         updateConnectionStatus(true);
-                        console.log('Connected to real-time updates');
+                        logDebug('Connected to real-time updates');
                     } else if (status === 'CLOSED') {
                         updateConnectionStatus(false);
-                        console.log('Disconnected from real-time updates');
+                        logDebug('Disconnected from real-time updates');
                     }
                 });
         }
 
         async function handleNewMessage(message) {
-            console.log('New message received:', message);
+            logDebug('New message received: ' + message.content);
             
             // Update chat list
             await loadChats();
@@ -956,7 +1110,13 @@
         }
 
         async function handleProfileUpdate(profile) {
-            if (profile.id === currentUser.id) return;
+            if (profile.id === currentUser.id) {
+                // Update current user's UI
+                if (profile.id === currentUser.id) {
+                    updateUserUI(profile);
+                }
+                return;
+            }
 
             // Update online status in chat list
             updateChatOnlineStatus(profile.id, profile.is_online, profile.last_seen);
@@ -995,6 +1155,7 @@
             if (!currentUser) return;
 
             try {
+                logDebug('Loading chats...');
                 const { data: chatData, error } = await supabase
                     .from('chats')
                     .select(`
@@ -1005,14 +1166,15 @@
                     .order('updated_at', { ascending: false });
 
                 if (error) {
-                    console.error('Error loading chats:', error);
+                    logDebug('Error loading chats: ' + error.message);
                     return;
                 }
 
                 chats = chatData || [];
+                logDebug('Chats loaded: ' + chats.length);
                 renderChatList();
             } catch (error) {
-                console.error('Error loading chats:', error);
+                logDebug('Error loading chats: ' + error.message);
             }
         }
 
@@ -1297,24 +1459,8 @@
             `;
 
             try {
-                // First, let's check if we can access the profiles table
-                const { data: testData, error: testError } = await supabase
-                    .from('profiles')
-                    .select('count')
-                    .limit(1);
-
-                if (testError) {
-                    console.error('Profiles table access error:', testError);
-                    contactsList.innerHTML = `
-                        <div class="text-center py-8 text-red-500">
-                            <i class="fas fa-exclamation-triangle text-2xl mb-2"></i>
-                            <p>Error accessing contacts</p>
-                            <p class="text-sm mt-2">${testError.message}</p>
-                        </div>
-                    `;
-                    return;
-                }
-
+                logDebug('Fetching contacts from profiles table...');
+                
                 // Load all users except current user
                 const { data: contactsData, error } = await supabase
                     .from('profiles')
@@ -1323,7 +1469,7 @@
                     .order('username');
 
                 if (error) {
-                    console.error('Error loading contacts:', error);
+                    logDebug('Error loading contacts: ' + error.message);
                     contactsList.innerHTML = `
                         <div class="text-center py-8 text-red-500">
                             <i class="fas fa-exclamation-triangle text-2xl mb-2"></i>
@@ -1334,7 +1480,7 @@
                     return;
                 }
 
-                console.log('Contacts loaded:', contactsData);
+                logDebug('Contacts loaded successfully: ' + (contactsData?.length || 0));
                 contacts = contactsData || [];
 
                 if (contacts.length === 0) {
@@ -1370,7 +1516,7 @@
                 });
 
             } catch (error) {
-                console.error('Unexpected error loading contacts:', error);
+                logDebug('Unexpected error loading contacts: ' + error.message);
                 contactsList.innerHTML = `
                     <div class="text-center py-8 text-red-500">
                         <i class="fas fa-exclamation-triangle text-2xl mb-2"></i>
@@ -1381,8 +1527,14 @@
             }
         }
 
+        async function refreshContacts() {
+            await loadContacts();
+            showNotification('Contacts refreshed', 'success');
+            toggleMenu();
+        }
+
         async function createNewChat(contact) {
-            console.log('Creating new chat with:', contact);
+            logDebug('Creating new chat with: ' + contact.username);
             
             try {
                 // Check if chat already exists
@@ -1393,13 +1545,13 @@
                     .single();
 
                 if (checkError && checkError.code !== 'PGRST116') {
-                    console.error('Error checking existing chat:', checkError);
+                    logDebug('Error checking existing chat: ' + checkError.message);
                     showNotification('Error checking chat', 'error');
                     return;
                 }
 
                 if (existingChat) {
-                    console.log('Chat already exists:', existingChat);
+                    logDebug('Chat already exists: ' + existingChat.id);
                     openChat(existingChat);
                 } else {
                     // Create new chat
@@ -1416,12 +1568,12 @@
                         .single();
 
                     if (createError) {
-                        console.error('Error creating chat:', createError);
+                        logDebug('Error creating chat: ' + createError.message);
                         showNotification('Failed to create chat', 'error');
                         return;
                     }
 
-                    console.log('New chat created:', newChat);
+                    logDebug('New chat created: ' + newChat.id);
                     
                     if (newChat) {
                         openChat(newChat);
@@ -1432,9 +1584,23 @@
                 await loadChats();
                 
             } catch (error) {
-                console.error('Error in createNewChat:', error);
+                logDebug('Error in createNewChat: ' + error.message);
                 showNotification('Failed to create chat', 'error');
             }
+        }
+
+        // Profile Modal Functions
+        function showProfileModal() {
+            document.getElementById('profileModal').classList.remove('hidden');
+            toggleMenu();
+        }
+
+        function hideProfileModal() {
+            document.getElementById('profileModal').classList.add('hidden');
+        }
+
+        function editProfile() {
+            showNotification('Edit profile feature coming soon!', 'info');
         }
 
         // Emoji Picker
@@ -1517,15 +1683,17 @@
             renderChatList();
         }
 
-        function showProfile() {
-            showNotification('Profile feature coming soon!', 'info');
-            toggleMenu();
-        }
-
         function toggleDarkMode() {
             document.body.classList.toggle('dark-mode');
             showNotification('Dark mode toggled', 'success');
             toggleMenu();
+        }
+
+        function logDebug(message) {
+            console.log('[DEBUG] ' + message);
+            if (debugMode) {
+                updateDebugInfo();
+            }
         }
 
         // Event Listeners
