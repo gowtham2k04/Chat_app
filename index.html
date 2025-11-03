@@ -1,0 +1,1451 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ChatApp - Real-time WhatsApp Clone</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --primary-green: #25D366;
+            --dark-bg: #111b21;
+            --dark-sidebar: #202c33;
+            --dark-hover: #2a3942;
+            --light-bg: #f0f2f5;
+            --light-sidebar: #ffffff;
+            --message-sent: #dcf8c6;
+            --message-received: #ffffff;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            overflow: hidden;
+        }
+
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: transparent;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: #888;
+            border-radius: 3px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: #555;
+        }
+
+        /* Animations */
+        @keyframes slideIn {
+            from {
+                transform: translateX(100%);
+                opacity: 0;
+            }
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+
+        @keyframes pulse {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+        }
+
+        @keyframes messageSlide {
+            from {
+                transform: translateY(20px);
+                opacity: 0;
+            }
+            to {
+                transform: translateY(0);
+                opacity: 1;
+            }
+        }
+
+        .slide-in {
+            animation: slideIn 0.3s ease-out;
+        }
+
+        .fade-in {
+            animation: fadeIn 0.3s ease-out;
+        }
+
+        .message-appear {
+            animation: messageSlide 0.3s ease-out;
+        }
+
+        /* WhatsApp Style Components */
+        .chat-item {
+            transition: all 0.2s ease;
+            cursor: pointer;
+            position: relative;
+        }
+
+        .chat-item:hover {
+            background: var(--dark-hover);
+        }
+
+        .chat-item.selected {
+            background: #f0f2f5;
+        }
+
+        .message-bubble {
+            max-width: 70%;
+            word-wrap: break-word;
+            animation: fadeIn 0.3s ease-out;
+            position: relative;
+        }
+
+        .message-bubble.sent {
+            background: var(--message-sent);
+            color: #303030;
+            border-radius: 7.5px 7.5px 0 7.5px;
+        }
+
+        .message-bubble.received {
+            background: var(--message-received);
+            color: #303030;
+            border-radius: 7.5px 7.5px 7.5px 0;
+            box-shadow: 0 1px 0.5px rgba(0,0,0,0.13);
+        }
+
+        .typing-indicator {
+            display: inline-flex;
+            align-items: center;
+            padding: 8px 12px;
+            background: var(--message-received);
+            border-radius: 7.5px 7.5px 7.5px 0;
+            box-shadow: 0 1px 0.5px rgba(0,0,0,0.13);
+        }
+
+        .typing-indicator span {
+            height: 8px;
+            width: 8px;
+            background: #999;
+            border-radius: 50%;
+            display: inline-block;
+            margin: 0 2px;
+            animation: typing 1.4s infinite;
+        }
+
+        .typing-indicator span:nth-child(2) {
+            animation-delay: 0.2s;
+        }
+
+        .typing-indicator span:nth-child(3) {
+            animation-delay: 0.4s;
+        }
+
+        @keyframes typing {
+            0%, 60%, 100% {
+                transform: translateY(0);
+            }
+            30% {
+                transform: translateY(-10px);
+            }
+        }
+
+        .online-indicator {
+            width: 12px;
+            height: 12px;
+            background: #25D366;
+            border: 2px solid white;
+            border-radius: 50%;
+            position: absolute;
+            bottom: 2px;
+            right: 2px;
+        }
+
+        .unread-badge {
+            background: var(--primary-green);
+            color: white;
+            border-radius: 50%;
+            min-width: 20px;
+            height: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+            font-weight: 600;
+        }
+
+        /* Dark Mode Styles */
+        .dark-mode {
+            background: var(--dark-bg);
+            color: #e9edef;
+        }
+
+        .dark-mode .sidebar {
+            background: var(--dark-sidebar);
+            border-right: 1px solid #2a3942;
+        }
+
+        .dark-mode .chat-header {
+            background: var(--dark-sidebar);
+            border-bottom: 1px solid #2a3942;
+        }
+
+        .dark-mode .message-input-container {
+            background: var(--dark-sidebar);
+            border-top: 1px solid #2a3942;
+        }
+
+        .dark-mode .message-bubble.received {
+            background: #202c33;
+            color: #e9edef;
+        }
+
+        .dark-mode .chat-item {
+            border-bottom: 1px solid #2a3942;
+        }
+
+        .dark-mode .chat-item.selected {
+            background: #2a3942;
+        }
+
+        /* Mobile Responsive */
+        @media (max-width: 768px) {
+            .sidebar {
+                width: 100%;
+                position: absolute;
+                z-index: 10;
+            }
+
+            .chat-container {
+                width: 100%;
+                position: absolute;
+            }
+
+            .sidebar.hidden {
+                display: none;
+            }
+
+            .chat-container.hidden {
+                display: none;
+            }
+        }
+
+        /* Notification */
+        .notification {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            padding: 16px 24px;
+            border-radius: 8px;
+            color: white;
+            font-weight: 500;
+            z-index: 9999;
+            animation: slideIn 0.3s ease-out;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            max-width: 400px;
+        }
+
+        .notification-success {
+            background: linear-gradient(135deg, #10b981, #059669);
+        }
+
+        .notification-error {
+            background: linear-gradient(135deg, #ef4444, #dc2626);
+        }
+
+        .notification-info {
+            background: linear-gradient(135deg, #3b82f6, #2563eb);
+        }
+
+        /* Modal */
+        .modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.5);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+        }
+
+        .modal.hidden {
+            display: none;
+        }
+
+        .modal-content {
+            background: white;
+            border-radius: 12px;
+            padding: 24px;
+            max-width: 500px;
+            width: 90%;
+            max-height: 80vh;
+            overflow-y: auto;
+        }
+
+        .dark-mode .modal-content {
+            background: #2a3942;
+            color: #e9edef;
+        }
+
+        /* Loading Spinner */
+        .spinner {
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid var(--primary-green);
+            border-radius: 50%;
+            width: 30px;
+            height: 30px;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        /* Connection Status */
+        .connection-status {
+            position: fixed;
+            bottom: 20px;
+            left: 20px;
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+            z-index: 999;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .connection-online {
+            background: #10b981;
+            color: white;
+        }
+
+        .connection-offline {
+            background: #ef4444;
+            color: white;
+        }
+
+        /* Message Status */
+        .message-status {
+            display: inline-flex;
+            align-items: center;
+            gap: 2px;
+            margin-left: 4px;
+        }
+
+        .message-status i {
+            font-size: 12px;
+            color: #53bdeb;
+        }
+
+        /* Emoji Picker */
+        .emoji-picker {
+            position: absolute;
+            bottom: 60px;
+            right: 10px;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+            padding: 10px;
+            display: none;
+            grid-template-columns: repeat(8, 1fr);
+            gap: 5px;
+            max-width: 300px;
+        }
+
+        .dark-mode .emoji-picker {
+            background: #2a3942;
+        }
+
+        .emoji-btn {
+            font-size: 24px;
+            cursor: pointer;
+            padding: 5px;
+            border-radius: 4px;
+            transition: background 0.2s;
+        }
+
+        .emoji-btn:hover {
+            background: #f0f0f0;
+        }
+
+        .dark-mode .emoji-btn:hover {
+            background: #3a454d;
+        }
+    </style>
+</head>
+<body class="bg-gray-100">
+    <!-- Connection Status -->
+    <div id="connectionStatus" class="connection-status connection-online">
+        <i class="fas fa-circle text-xs"></i>
+        <span>Connected</span>
+    </div>
+
+    <!-- Login/Register Screen -->
+    <div id="authScreen" class="fixed inset-0 bg-gradient-to-br from-green-400 to-blue-500 flex items-center justify-center z-50">
+        <div class="bg-white rounded-2xl shadow-2xl p-8 w-full max-w-md fade-in">
+            <div class="text-center mb-8">
+                <div class="inline-flex items-center justify-center w-20 h-20 bg-green-500 rounded-full mb-4">
+                    <i class="fas fa-comments text-white text-3xl"></i>
+                </div>
+                <h1 class="text-3xl font-bold text-gray-800">ChatApp</h1>
+                <p class="text-gray-600 mt-2">Real-time messaging</p>
+            </div>
+
+            <!-- Login Form -->
+            <div id="loginForm" class="space-y-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Email</label>
+                    <input type="email" id="loginEmail" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent" placeholder="your@email.com">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Password</label>
+                    <input type="password" id="loginPassword" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent" placeholder="••••••••">
+                </div>
+                <button onclick="login()" class="w-full bg-green-500 text-white py-3 rounded-lg font-semibold hover:bg-green-600 transition duration-200">
+                    Sign In
+                </button>
+                <p class="text-center text-gray-600">
+                    Don't have an account? 
+                    <a href="#" onclick="toggleAuthMode()" class="text-green-500 hover:underline">Sign up</a>
+                </p>
+            </div>
+
+            <!-- Register Form -->
+            <div id="registerForm" class="space-y-4 hidden">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Username</label>
+                    <input type="text" id="registerUsername" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent" placeholder="John Doe">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Email</label>
+                    <input type="email" id="registerEmail" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent" placeholder="your@email.com">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Password</label>
+                    <input type="password" id="registerPassword" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent" placeholder="••••••••">
+                </div>
+                <button onclick="register()" class="w-full bg-green-500 text-white py-3 rounded-lg font-semibold hover:bg-green-600 transition duration-200">
+                    Create Account
+                </button>
+                <p class="text-center text-gray-600">
+                    Already have an account? 
+                    <a href="#" onclick="toggleAuthMode()" class="text-green-500 hover:underline">Sign in</a>
+                </p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Chat Application -->
+    <div id="chatApp" class="hidden h-screen flex">
+        <!-- Sidebar -->
+        <div id="sidebar" class="sidebar w-96 bg-white border-r border-gray-200 flex flex-col">
+            <!-- Profile Header -->
+            <div class="chat-header p-4 flex items-center justify-between">
+                <div class="flex items-center gap-3">
+                    <img id="userAvatar" src="https://picsum.photos/seed/user1/40/40" alt="Profile" class="w-10 h-10 rounded-full cursor-pointer hover:opacity-80">
+                    <div>
+                        <h3 id="userName" class="font-semibold">User</h3>
+                        <p id="userStatus" class="text-xs text-gray-500">Online</p>
+                    </div>
+                </div>
+                <div class="flex gap-4">
+                    <button onclick="toggleNewChatModal()" class="text-gray-600 hover:text-gray-800">
+                        <i class="fas fa-comment-dots text-xl"></i>
+                    </button>
+                    <button onclick="toggleMenu()" class="text-gray-600 hover:text-gray-800">
+                        <i class="fas fa-ellipsis-v text-xl"></i>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Search Bar -->
+            <div class="p-3">
+                <div class="relative">
+                    <i class="fas fa-search absolute left-3 top-3 text-gray-400"></i>
+                    <input type="text" id="searchInput" placeholder="Search or start new chat" class="w-full pl-10 pr-4 py-2 bg-gray-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500">
+                </div>
+            </div>
+
+            <!-- Chat List -->
+            <div id="chatList" class="flex-1 overflow-y-auto">
+                <!-- Chat items will be dynamically added here -->
+            </div>
+        </div>
+
+        <!-- Chat Container -->
+        <div id="chatContainer" class="chat-container flex-1 flex flex-col bg-gray-50">
+            <!-- Empty State -->
+            <div id="emptyState" class="flex-1 flex items-center justify-center">
+                <div class="text-center">
+                    <i class="fas fa-comments text-6xl text-gray-300 mb-4"></i>
+                    <h2 class="text-2xl font-semibold text-gray-600 mb-2">ChatApp Web</h2>
+                    <p class="text-gray-500">Send and receive messages in real-time</p>
+                    <p class="text-gray-500 text-sm mt-2">Select a chat to start messaging</p>
+                </div>
+            </div>
+
+            <!-- Chat View (Hidden by default) -->
+            <div id="chatView" class="hidden flex-1 flex flex-col">
+                <!-- Chat Header -->
+                <div class="chat-header bg-white px-6 py-4 flex items-center justify-between shadow-sm">
+                    <div class="flex items-center gap-3">
+                        <button onclick="backToChatList()" class="md:hidden text-gray-600">
+                            <i class="fas fa-arrow-left text-xl"></i>
+                        </button>
+                        <img id="chatAvatar" src="https://picsum.photos/seed/contact1/40/40" alt="Contact" class="w-10 h-10 rounded-full">
+                        <div>
+                            <h3 id="chatName" class="font-semibold">Contact Name</h3>
+                            <p id="chatStatus" class="text-xs text-gray-500">Online</p>
+                        </div>
+                    </div>
+                    <div class="flex gap-4">
+                        <button class="text-gray-600 hover:text-gray-800">
+                            <i class="fas fa-video text-xl"></i>
+                        </button>
+                        <button class="text-gray-600 hover:text-gray-800">
+                            <i class="fas fa-phone text-xl"></i>
+                        </button>
+                        <button class="text-gray-600 hover:text-gray-800">
+                            <i class="fas fa-search text-xl"></i>
+                        </button>
+                        <button class="text-gray-600 hover:text-gray-800">
+                            <i class="fas fa-ellipsis-v text-xl"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Messages Area -->
+                <div id="messagesArea" class="flex-1 overflow-y-auto p-4 space-y-2">
+                    <!-- Messages will be dynamically added here -->
+                </div>
+
+                <!-- Typing Indicator -->
+                <div id="typingIndicator" class="hidden px-6 py-2">
+                    <div class="typing-indicator">
+                        <span></span>
+                        <span></span>
+                        <span></span>
+                    </div>
+                </div>
+
+                <!-- Message Input -->
+                <div class="message-input-container bg-white px-4 py-3 flex items-center gap-3">
+                    <button class="text-gray-600 hover:text-gray-800" onclick="toggleEmojiPicker()">
+                        <i class="fas fa-smile text-xl"></i>
+                    </button>
+                    <button class="text-gray-600 hover:text-gray-800">
+                        <i class="fas fa-paperclip text-xl"></i>
+                    </button>
+                    <input type="text" id="messageInput" placeholder="Type a message" class="flex-1 px-4 py-2 bg-gray-100 rounded-full focus:outline-none focus:ring-2 focus:ring-green-500">
+                    <button id="sendButton" onclick="sendMessage()" class="bg-green-500 text-white w-10 h-10 rounded-full flex items-center justify-center hover:bg-green-600 transition">
+                        <i class="fas fa-paper-plane"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- New Chat Modal -->
+    <div id="newChatModal" class="modal hidden">
+        <div class="modal-content">
+            <h3 class="text-xl font-semibold mb-4">New Chat</h3>
+            <input type="text" id="newChatSearch" placeholder="Search users..." class="w-full px-4 py-2 border border-gray-300 rounded-lg mb-4">
+            <div id="contactsList" class="max-h-64 overflow-y-auto">
+                <!-- Contacts will be listed here -->
+            </div>
+            <button onclick="toggleNewChatModal()" class="mt-4 text-gray-500 hover:text-gray-700">
+                Cancel
+            </button>
+        </div>
+    </div>
+
+    <!-- Menu Modal -->
+    <div id="menuModal" class="modal hidden">
+        <div class="modal-content">
+            <div class="space-y-2">
+                <div class="p-3 hover:bg-gray-100 rounded cursor-pointer" onclick="showProfile()">
+                    <i class="fas fa-user mr-2"></i> Profile
+                </div>
+                <div class="p-3 hover:bg-gray-100 rounded cursor-pointer" onclick="toggleDarkMode()">
+                    <i class="fas fa-moon mr-2"></i> Dark Mode
+                </div>
+                <div class="p-3 hover:bg-gray-100 rounded cursor-pointer" onclick="logout()">
+                    <i class="fas fa-sign-out-alt mr-2"></i> Logout
+                </div>
+            </div>
+            <button onclick="toggleMenu()" class="mt-4 text-gray-500 hover:text-gray-700">
+                Cancel
+            </button>
+        </div>
+    </div>
+
+    <!-- Emoji Picker -->
+    <div id="emojiPicker" class="emoji-picker">
+        <!-- Emojis will be added here -->
+    </div>
+
+    <script>
+        // Supabase Configuration
+        const supabaseUrl = 'https://klgxbxijtrzpxuetidtg.supabase.co';
+        const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtsZ3hieGlqdHJ6cHh1ZXRpZHRnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjIxNjQzMzYsImV4cCI6MjA3Nzc0MDMzNn0.c_36TsjeOYW_gSiD0-P1C-poGPnqmxrLeiJvUzbLuZ4';
+        const supabase = window.supabase.createClient(supabaseUrl, supabaseKey);
+
+        // Global Variables
+        let currentUser = null;
+        let currentChat = null;
+        let messages = [];
+        let chats = [];
+        let realtimeChannel = null;
+        let typingTimeout = null;
+        let onlineUsers = new Set();
+
+        // Initialize App
+        document.addEventListener('DOMContentLoaded', () => {
+            checkAuth();
+            setupEventListeners();
+            initializeEmojis();
+            setupRealtimeSubscriptions();
+        });
+
+        // Authentication Functions
+        async function checkAuth() {
+            const { data: { user } } = await supabase.auth.getUser();
+            if (user) {
+                currentUser = user;
+                showChatApp();
+                loadUserData();
+                loadChats();
+                updateUserOnlineStatus(true);
+            } else {
+                showAuthScreen();
+            }
+        }
+
+        async function login() {
+            const email = document.getElementById('loginEmail').value;
+            const password = document.getElementById('loginPassword').value;
+
+            if (!email || !password) {
+                showNotification('Please fill in all fields', 'error');
+                return;
+            }
+
+            try {
+                const { data, error } = await supabase.auth.signInWithPassword({
+                    email: email,
+                    password: password
+                });
+
+                if (error) throw error;
+
+                currentUser = data.user;
+                showChatApp();
+                loadUserData();
+                loadChats();
+                updateUserOnlineStatus(true);
+                setupRealtimeSubscriptions();
+                showNotification('Login successful!', 'success');
+            } catch (error) {
+                showNotification(error.message, 'error');
+            }
+        }
+
+        async function register() {
+            const username = document.getElementById('registerUsername').value;
+            const email = document.getElementById('registerEmail').value;
+            const password = document.getElementById('registerPassword').value;
+
+            if (!username || !email || !password) {
+                showNotification('Please fill in all fields', 'error');
+                return;
+            }
+
+            try {
+                const { data, error } = await supabase.auth.signUp({
+                    email: email,
+                    password: password,
+                    options: {
+                        data: {
+                            username: username
+                        }
+                    }
+                });
+
+                if (error) throw error;
+
+                // Create user profile
+                await supabase.from('profiles').insert({
+                    id: data.user.id,
+                    username: username,
+                    email: email,
+                    avatar_url: `https://picsum.photos/seed/${data.user.id}/200/200`,
+                    is_online: true,
+                    last_seen: new Date().toISOString()
+                });
+
+                currentUser = data.user;
+                showChatApp();
+                loadUserData();
+                loadChats();
+                updateUserOnlineStatus(true);
+                setupRealtimeSubscriptions();
+                showNotification('Registration successful!', 'success');
+            } catch (error) {
+                showNotification(error.message, 'error');
+            }
+        }
+
+        function toggleAuthMode() {
+            const loginForm = document.getElementById('loginForm');
+            const registerForm = document.getElementById('registerForm');
+            
+            if (loginForm.classList.contains('hidden')) {
+                loginForm.classList.remove('hidden');
+                registerForm.classList.add('hidden');
+            } else {
+                loginForm.classList.add('hidden');
+                registerForm.classList.remove('hidden');
+            }
+        }
+
+        async function logout() {
+            await updateUserOnlineStatus(false);
+            if (realtimeChannel) {
+                await supabase.removeChannel(realtimeChannel);
+            }
+            await supabase.auth.signOut();
+            currentUser = null;
+            currentChat = null;
+            showAuthScreen();
+        }
+
+        // UI Functions
+        function showAuthScreen() {
+            document.getElementById('authScreen').classList.remove('hidden');
+            document.getElementById('chatApp').classList.add('hidden');
+        }
+
+        function showChatApp() {
+            document.getElementById('authScreen').classList.add('hidden');
+            document.getElementById('chatApp').classList.remove('hidden');
+        }
+
+        async function loadUserData() {
+            if (!currentUser) return;
+
+            const { data: profile } = await supabase
+                .from('profiles')
+                .select('*')
+                .eq('id', currentUser.id)
+                .single();
+
+            if (profile) {
+                document.getElementById('userName').textContent = profile.username;
+                document.getElementById('userAvatar').src = profile.avatar_url;
+            }
+        }
+
+        async function updateUserOnlineStatus(isOnline) {
+            if (!currentUser) return;
+            
+            try {
+                await supabase
+                    .from('profiles')
+                    .update({ 
+                        is_online: isOnline,
+                        last_seen: new Date().toISOString()
+                    })
+                    .eq('id', currentUser.id);
+            } catch (error) {
+                console.error('Error updating online status:', error);
+            }
+        }
+
+        // Real-time Subscriptions
+        function setupRealtimeSubscriptions() {
+            if (!currentUser) return;
+
+            // Remove existing channel
+            if (realtimeChannel) {
+                supabase.removeChannel(realtimeChannel);
+            }
+
+            // Create new channel for real-time updates
+            realtimeChannel = supabase
+                .channel('realtime-chat')
+                .on('postgres_changes', 
+                    { 
+                        event: 'INSERT', 
+                        schema: 'public', 
+                        table: 'messages',
+                        filter: `recipient_id=eq.${currentUser.id}`
+                    }, 
+                    (payload) => {
+                        handleNewMessage(payload.new);
+                    }
+                )
+                .on('postgres_changes',
+                    {
+                        event: 'UPDATE',
+                        schema: 'public',
+                        table: 'profiles'
+                    },
+                    (payload) => {
+                        handleProfileUpdate(payload.new);
+                    }
+                )
+                .on('broadcast',
+                    { event: 'typing' },
+                    (payload) => {
+                        handleTypingIndicator(payload.payload);
+                    }
+                )
+                .subscribe((status) => {
+                    if (status === 'SUBSCRIBED') {
+                        updateConnectionStatus(true);
+                        console.log('Connected to real-time updates');
+                    } else if (status === 'CLOSED') {
+                        updateConnectionStatus(false);
+                        console.log('Disconnected from real-time updates');
+                    }
+                });
+        }
+
+        async function handleNewMessage(message) {
+            console.log('New message received:', message);
+            
+            // Update chat list
+            await loadChats();
+
+            // If in the chat, load new messages
+            if (currentChat && message.chat_id === currentChat.id) {
+                await loadMessages(currentChat.id);
+                await markMessagesAsRead(currentChat.id);
+            }
+
+            // Get sender username for notification
+            const { data: sender } = await supabase
+                .from('profiles')
+                .select('username')
+                .eq('id', message.sender_id)
+                .single();
+
+            // Show notification
+            showNotification(`New message from ${sender?.username || 'Unknown'}`, 'info');
+
+            // Play notification sound (optional)
+            playNotificationSound();
+        }
+
+        async function handleProfileUpdate(profile) {
+            if (profile.id === currentUser.id) return;
+
+            // Update online status in chat list
+            updateChatOnlineStatus(profile.id, profile.is_online, profile.last_seen);
+        }
+
+        function handleTypingIndicator(data) {
+            if (!currentChat || data.chatId !== currentChat.id) return;
+            if (data.userId === currentUser.id) return;
+
+            const typingIndicator = document.getElementById('typingIndicator');
+            
+            if (data.isTyping) {
+                typingIndicator.classList.remove('hidden');
+                clearTimeout(typingTimeout);
+                typingTimeout = setTimeout(() => {
+                    typingIndicator.classList.add('hidden');
+                }, 3000);
+            } else {
+                typingIndicator.classList.add('hidden');
+            }
+        }
+
+        function updateConnectionStatus(isConnected) {
+            const statusEl = document.getElementById('connectionStatus');
+            if (isConnected) {
+                statusEl.className = 'connection-status connection-online';
+                statusEl.innerHTML = '<i class="fas fa-circle text-xs"></i><span>Connected</span>';
+            } else {
+                statusEl.className = 'connection-status connection-offline';
+                statusEl.innerHTML = '<i class="fas fa-circle text-xs"></i><span>Disconnected</span>';
+            }
+        }
+
+        // Chat Functions
+        async function loadChats() {
+            if (!currentUser) return;
+
+            const { data: chatData, error } = await supabase
+                .from('chats')
+                .select(`
+                    *,
+                    recipient:profiles!chats_recipient_id_fkey(id, username, avatar_url, is_online, last_seen)
+                `)
+                .or(`user_id.eq.${currentUser.id},recipient_id.eq.${currentUser.id}`)
+                .order('updated_at', { ascending: false });
+
+            if (error) {
+                console.error('Error loading chats:', error);
+                return;
+            }
+
+            chats = chatData || [];
+            renderChatList();
+        }
+
+        function renderChatList() {
+            const chatList = document.getElementById('chatList');
+            chatList.innerHTML = '';
+
+            if (chats.length === 0) {
+                chatList.innerHTML = `
+                    <div class="text-center py-8 text-gray-500">
+                        <i class="fas fa-comments text-4xl mb-2"></i>
+                        <p>No chats yet</p>
+                        <button onclick="toggleNewChatModal()" class="mt-4 text-green-500 hover:underline">
+                            Start a new chat
+                        </button>
+                    </div>
+                `;
+                return;
+            }
+
+            chats.forEach(chat => {
+                const chatItem = document.createElement('div');
+                chatItem.className = 'chat-item flex items-center gap-3 p-4 hover:bg-gray-100';
+                if (currentChat && chat.id === currentChat.id) {
+                    chatItem.classList.add('selected');
+                }
+                chatItem.onclick = () => openChat(chat);
+
+                // Determine which user is the other person in the chat
+                const otherUser = chat.user_id === currentUser.id ? chat.recipient : chat.recipient;
+                
+                const lastMessage = chat.last_message || 'Start a conversation';
+                const time = formatTime(chat.updated_at);
+                const unreadCount = chat.unread_count || 0;
+
+                chatItem.innerHTML = `
+                    <div class="relative">
+                        <img src="${otherUser.avatar_url}" alt="${otherUser.username}" class="w-12 h-12 rounded-full">
+                        ${otherUser.is_online ? '<div class="online-indicator"></div>' : ''}
+                    </div>
+                    <div class="flex-1">
+                        <div class="flex justify-between items-baseline">
+                            <h4 class="font-semibold">${otherUser.username}</h4>
+                            <span class="text-xs text-gray-500">${time}</span>
+                        </div>
+                        <div class="flex justify-between items-center">
+                            <p class="text-sm text-gray-600 truncate">${lastMessage}</p>
+                            ${unreadCount > 0 ? `<span class="unread-badge">${unreadCount}</span>` : ''}
+                        </div>
+                    </div>
+                `;
+
+                chatList.appendChild(chatItem);
+            });
+        }
+
+        async function openChat(chat) {
+            currentChat = chat;
+            
+            // Determine which user is the other person in the chat
+            const otherUser = chat.user_id === currentUser.id ? chat.recipient : chat.recipient;
+            
+            // Update UI
+            document.getElementById('emptyState').classList.add('hidden');
+            document.getElementById('chatView').classList.remove('hidden');
+            document.getElementById('chatName').textContent = otherUser.username;
+            document.getElementById('chatAvatar').src = otherUser.avatar_url;
+            document.getElementById('chatStatus').textContent = otherUser.is_online ? 'Online' : `Last seen ${formatTime(otherUser.last_seen)}`;
+
+            // Load messages
+            await loadMessages(chat.id);
+
+            // Mark messages as read
+            await markMessagesAsRead(chat.id);
+
+            // Mobile view handling
+            if (window.innerWidth < 768) {
+                document.getElementById('sidebar').classList.add('hidden');
+                document.getElementById('chatContainer').classList.remove('hidden');
+            }
+
+            // Update chat list selection
+            renderChatList();
+        }
+
+        async function loadMessages(chatId) {
+            const { data: messageData, error } = await supabase
+                .from('messages')
+                .select('*')
+                .eq('chat_id', chatId)
+                .order('created_at', { ascending: true });
+
+            if (error) {
+                console.error('Error loading messages:', error);
+                return;
+            }
+
+            messages = messageData || [];
+            renderMessages();
+        }
+
+        function renderMessages() {
+            const messagesArea = document.getElementById('messagesArea');
+            messagesArea.innerHTML = '';
+
+            if (messages.length === 0) {
+                messagesArea.innerHTML = `
+                    <div class="text-center text-gray-500 py-8">
+                        <p>No messages yet. Start the conversation!</p>
+                    </div>
+                `;
+                return;
+            }
+
+            messages.forEach((message, index) => {
+                const messageDiv = document.createElement('div');
+                messageDiv.className = `flex ${message.sender_id === currentUser.id ? 'justify-end' : 'justify-start'} message-appear`;
+
+                const bubble = document.createElement('div');
+                bubble.className = `message-bubble ${message.sender_id === currentUser.id ? 'sent' : 'received'} px-4 py-2`;
+                
+                bubble.innerHTML = `
+                    <p>${message.content}</p>
+                    <div class="flex items-center gap-1 mt-1">
+                        <span class="text-xs text-gray-500">${formatTime(message.created_at)}</span>
+                        ${message.sender_id === currentUser.id ? `
+                            <div class="message-status">
+                                <i class="fas fa-check${message.read ? '-double' : ''}"></i>
+                            </div>
+                        ` : ''}
+                    </div>
+                `;
+
+                messageDiv.appendChild(bubble);
+                messagesArea.appendChild(messageDiv);
+            });
+
+            // Scroll to bottom
+            setTimeout(() => {
+                messagesArea.scrollTop = messagesArea.scrollHeight;
+            }, 100);
+        }
+
+        async function sendMessage() {
+            const input = document.getElementById('messageInput');
+            const content = input.value.trim();
+
+            if (!content || !currentChat) return;
+
+            // Determine recipient ID
+            const recipientId = currentChat.user_id === currentUser.id ? currentChat.recipient_id : currentChat.user_id;
+            
+            try {
+                // Insert message
+                const { data, error } = await supabase
+                    .from('messages')
+                    .insert({
+                        chat_id: currentChat.id,
+                        sender_id: currentUser.id,
+                        recipient_id: recipientId,
+                        content: content,
+                        message_type: 'text',
+                        read: false
+                    })
+                    .select()
+                    .single();
+
+                if (error) throw error;
+
+                // Update chat's last message
+                await supabase
+                    .from('chats')
+                    .update({
+                        last_message: content,
+                        updated_at: new Date().toISOString()
+                    })
+                    .eq('id', currentChat.id);
+
+                // Clear input
+                input.value = '';
+
+                // Send typing stopped broadcast
+                sendTypingIndicator(false);
+
+                // Add message to local state immediately for better UX
+                messages.push(data);
+                renderMessages();
+
+                // Reload chat list
+                await loadChats();
+
+            } catch (error) {
+                console.error('Error sending message:', error);
+                showNotification('Failed to send message', 'error');
+            }
+        }
+
+        async function markMessagesAsRead(chatId) {
+            try {
+                await supabase
+                    .from('messages')
+                    .update({ read: true })
+                    .eq('chat_id', chatId)
+                    .eq('recipient_id', currentUser.id)
+                    .eq('read', false);
+            } catch (error) {
+                console.error('Error marking messages as read:', error);
+            }
+        }
+
+        function updateChatOnlineStatus(userId, isOnline, lastSeen) {
+            // Update the chat list if the user is in a chat
+            const chat = chats.find(c => 
+                (c.user_id === userId || c.recipient_id === userId) && 
+                (c.user_id === currentUser.id || c.recipient_id === currentUser.id)
+            );
+            
+            if (chat) {
+                const otherUser = chat.user_id === currentUser.id ? chat.recipient : chat.recipient;
+                if (otherUser.id === userId) {
+                    otherUser.is_online = isOnline;
+                    otherUser.last_seen = lastSeen;
+                    renderChatList();
+                    
+                    // Update current chat if it's the same user
+                    if (currentChat && (currentChat.user_id === userId || currentChat.recipient_id === userId)) {
+                        document.getElementById('chatStatus').textContent = isOnline ? 'Online' : `Last seen ${formatTime(lastSeen)}`;
+                    }
+                }
+            }
+        }
+
+        // Typing Indicator
+        function sendTypingIndicator(isTyping) {
+            if (!currentChat || !realtimeChannel) return;
+
+            const recipientId = currentChat.user_id === currentUser.id ? currentChat.recipient_id : currentChat.user_id;
+
+            realtimeChannel.send({
+                type: 'broadcast',
+                event: 'typing',
+                payload: {
+                    chatId: currentChat.id,
+                    userId: currentUser.id,
+                    recipientId: recipientId,
+                    isTyping: isTyping
+                }
+            });
+        }
+
+        // Modal Functions
+        function toggleNewChatModal() {
+            const modal = document.getElementById('newChatModal');
+            modal.classList.toggle('hidden');
+            if (!modal.classList.contains('hidden')) {
+                loadContacts();
+            }
+        }
+
+        function toggleMenu() {
+            document.getElementById('menuModal').classList.toggle('hidden');
+        }
+
+        function toggleEmojiPicker() {
+            const picker = document.getElementById('emojiPicker');
+            picker.style.display = picker.style.display === 'none' ? 'grid' : 'none';
+        }
+
+        async function loadContacts() {
+            const { data: contacts } = await supabase
+                .from('profiles')
+                .select('*')
+                .neq('id', currentUser.id)
+                .order('username');
+
+            const contactsList = document.getElementById('contactsList');
+            contactsList.innerHTML = '';
+
+            if (!contacts || contacts.length === 0) {
+                contactsList.innerHTML = '<p class="text-gray-500 text-center">No other users found</p>';
+                return;
+            }
+
+            contacts.forEach(contact => {
+                const contactItem = document.createElement('div');
+                contactItem.className = 'flex items-center gap-3 p-2 hover:bg-gray-100 rounded cursor-pointer';
+                contactItem.onclick = () => createNewChat(contact);
+
+                contactItem.innerHTML = `
+                    <div class="relative">
+                        <img src="${contact.avatar_url}" alt="${contact.username}" class="w-10 h-10 rounded-full">
+                        ${contact.is_online ? '<div class="online-indicator"></div>' : ''}
+                    </div>
+                    <div>
+                        <p class="font-semibold">${contact.username}</p>
+                        <p class="text-sm text-gray-500">${contact.is_online ? 'Online' : `Last seen ${formatTime(contact.last_seen)}`}</p>
+                    </div>
+                `;
+
+                contactsList.appendChild(contactItem);
+            });
+        }
+
+        async function createNewChat(contact) {
+            // Check if chat already exists
+            const { data: existingChat } = await supabase
+                .from('chats')
+                .select('*')
+                .or(`(user_id.eq.${currentUser.id},recipient_id.eq.${contact.id}),(user_id.eq.${contact.id},recipient_id.eq.${currentUser.id})`)
+                .single();
+
+            if (existingChat) {
+                openChat(existingChat);
+            } else {
+                // Create new chat
+                const { data: newChat } = await supabase
+                    .from('chats')
+                    .insert({
+                        user_id: currentUser.id,
+                        recipient_id: contact.id
+                    })
+                    .select(`
+                        *,
+                        recipient:profiles!chats_recipient_id_fkey(id, username, avatar_url, is_online, last_seen)
+                    `)
+                    .single();
+
+                if (newChat) {
+                    openChat(newChat);
+                }
+            }
+
+            toggleNewChatModal();
+            await loadChats();
+        }
+
+        // Emoji Picker
+        function initializeEmojis() {
+            const emojis = ['😀', '😃', '😄', '😁', '😆', '😅', '😂', '🤣', '😊', '😇', '🙂', '🙃', '😉', '😌', '😍', '🥰', '😘', '😗', '😙', '😚', '😋', '😛', '😜', '🤪', '😝', '🤑', '🤗', '🤭', '🤫', '🤔', '🤐', '🤨', '😐', '😑', '😶', '😏', '😒', '🙄', '😬', '🤥', '😌', '😔', '😪', '🤤', '😴', '😷', '🤒', '🤕', '🤢', '🤮', '🤧', '🥵', '🥶', '🥴', '😵', '🤯', '🤠', '🥳', '😎', '🤓', '🧐', '😕', '😟', '🙁', '☹️', '😮', '😯', '😲', '😳', '🥺', '😦', '😧', '😨', '😰', '😥', '😢', '😭', '😱', '😖', '😣', '😞', '😓', '😩', '😫', '🥱', '😤', '😡', '😠', '🤬', '😈', '👿', '💀', '☠️', '💩', '🤡', '👹', '👺', '👻', '👽', '👾', '🤖', '❤️', '🧡', '💛', '💚', '💙', '💜', '🖤', '🤍', '🤎', '💔', '❣️', '💕', '💞', '💓', '💗', '💖', '💘', '💝'];
+            
+            const emojiPicker = document.getElementById('emojiPicker');
+            emojis.forEach(emoji => {
+                const emojiBtn = document.createElement('span');
+                emojiBtn.className = 'emoji-btn';
+                emojiBtn.textContent = emoji;
+                emojiBtn.onclick = () => insertEmoji(emoji);
+                emojiPicker.appendChild(emojiBtn);
+            });
+        }
+
+        function insertEmoji(emoji) {
+            const input = document.getElementById('messageInput');
+            input.value += emoji;
+            input.focus();
+            document.getElementById('emojiPicker').style.display = 'none';
+        }
+
+        // Utility Functions
+        function formatTime(dateString) {
+            if (!dateString) return '';
+            
+            const date = new Date(dateString);
+            const now = new Date();
+            const diff = now - date;
+            const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+
+            if (days === 0) {
+                return date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+            } else if (days === 1) {
+                return 'Yesterday';
+            } else if (days < 7) {
+                return date.toLocaleDateString('en-US', { weekday: 'short' });
+            } else {
+                return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+            }
+        }
+
+        function showNotification(message, type = 'info') {
+            const notification = document.createElement('div');
+            notification.className = `notification notification-${type}`;
+            notification.textContent = message;
+            
+            document.body.appendChild(notification);
+            
+            setTimeout(() => {
+                notification.remove();
+            }, 3000);
+        }
+
+        function playNotificationSound() {
+            // Create a simple notification sound using Web Audio API
+            const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            const oscillator = audioContext.createOscillator();
+            const gainNode = audioContext.createGain();
+            
+            oscillator.connect(gainNode);
+            gainNode.connect(audioContext.destination);
+            
+            oscillator.frequency.value = 800;
+            oscillator.type = 'sine';
+            gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
+            gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.1);
+            
+            oscillator.start(audioContext.currentTime);
+            oscillator.stop(audioContext.currentTime + 0.1);
+        }
+
+        function backToChatList() {
+            document.getElementById('emptyState').classList.remove('hidden');
+            document.getElementById('chatView').classList.add('hidden');
+            document.getElementById('sidebar').classList.remove('hidden');
+            document.getElementById('chatContainer').classList.add('hidden');
+            currentChat = null;
+            renderChatList();
+        }
+
+        function showProfile() {
+            showNotification('Profile feature coming soon!', 'info');
+            toggleMenu();
+        }
+
+        function toggleDarkMode() {
+            document.body.classList.toggle('dark-mode');
+            showNotification('Dark mode toggled', 'success');
+            toggleMenu();
+        }
+
+        // Event Listeners
+        function setupEventListeners() {
+            // Message input events
+            const messageInput = document.getElementById('messageInput');
+            
+            messageInput.addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') {
+                    sendMessage();
+                }
+            });
+
+            messageInput.addEventListener('input', () => {
+                if (messageInput.value.trim()) {
+                    sendTypingIndicator(true);
+                } else {
+                    sendTypingIndicator(false);
+                }
+            });
+
+            // Search functionality
+            document.getElementById('searchInput').addEventListener('input', (e) => {
+                const searchTerm = e.target.value.toLowerCase();
+                const filteredChats = chats.filter(chat => {
+                    const otherUser = chat.user_id === currentUser.id ? chat.recipient : chat.recipient;
+                    return otherUser.username.toLowerCase().includes(searchTerm);
+                });
+                renderFilteredChats(filteredChats);
+            });
+
+            // Hide modals on click outside
+            document.addEventListener('click', (e) => {
+                if (!e.target.closest('.modal-content') && !e.target.closest('button')) {
+                    document.querySelectorAll('.modal').forEach(modal => {
+                        modal.classList.add('hidden');
+                    });
+                }
+                
+                // Hide emoji picker on click outside
+                if (!e.target.closest('#emojiPicker') && !e.target.closest('.fa-smile')) {
+                    document.getElementById('emojiPicker').style.display = 'none';
+                }
+            });
+
+            // Window resize handling
+            window.addEventListener('resize', () => {
+                if (window.innerWidth >= 768) {
+                    document.getElementById('sidebar').classList.remove('hidden');
+                    document.getElementById('chatContainer').classList.remove('hidden');
+                }
+            });
+
+            // Handle page visibility change
+            document.addEventListener('visibilitychange', () => {
+                if (document.hidden) {
+                    updateUserOnlineStatus(false);
+                } else {
+                    updateUserOnlineStatus(true);
+                }
+            });
+        }
+
+        function renderFilteredChats(filteredChats) {
+            const chatList = document.getElementById('chatList');
+            chatList.innerHTML = '';
+
+            if (filteredChats.length === 0) {
+                chatList.innerHTML = `
+                    <div class="text-center py-8 text-gray-500">
+                        <p>No chats found</p>
+                    </div>
+                `;
+                return;
+            }
+
+            filteredChats.forEach(chat => {
+                const chatItem = document.createElement('div');
+                chatItem.className = 'chat-item flex items-center gap-3 p-4 hover:bg-gray-100';
+                if (currentChat && chat.id === currentChat.id) {
+                    chatItem.classList.add('selected');
+                }
+                chatItem.onclick = () => openChat(chat);
+
+                const otherUser = chat.user_id === currentUser.id ? chat.recipient : chat.recipient;
+                
+                const lastMessage = chat.last_message || 'Start a conversation';
+                const time = formatTime(chat.updated_at);
+                const unreadCount = chat.unread_count || 0;
+
+                chatItem.innerHTML = `
+                    <div class="relative">
+                        <img src="${otherUser.avatar_url}" alt="${otherUser.username}" class="w-12 h-12 rounded-full">
+                        ${otherUser.is_online ? '<div class="online-indicator"></div>' : ''}
+                    </div>
+                    <div class="flex-1">
+                        <div class="flex justify-between items-baseline">
+                            <h4 class="font-semibold">${otherUser.username}</h4>
+                            <span class="text-xs text-gray-500">${time}</span>
+                        </div>
+                        <div class="flex justify-between items-center">
+                            <p class="text-sm text-gray-600 truncate">${lastMessage}</p>
+                            ${unreadCount > 0 ? `<span class="unread-badge">${unreadCount}</span>` : ''}
+                        </div>
+                    </div>
+                `;
+
+                chatList.appendChild(chatItem);
+            });
+        }
+    </script>
+</body>
+</html>
