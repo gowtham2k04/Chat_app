@@ -391,9 +391,46 @@
         .dark-mode .emoji-btn:hover {
             background: #3a454d;
         }
+
+        /* Contact Item */
+        .contact-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 12px;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+
+        .contact-item:hover {
+            background-color: #f3f4f6;
+        }
+
+        .dark-mode .contact-item:hover {
+            background-color: #374151;
+        }
+
+        /* Debug Info */
+        .debug-info {
+            position: fixed;
+            top: 10px;
+            left: 10px;
+            background: rgba(0,0,0,0.8);
+            color: white;
+            padding: 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-family: monospace;
+            z-index: 10000;
+            max-width: 300px;
+        }
     </style>
 </head>
 <body class="bg-gray-100">
+    <!-- Debug Info -->
+    <div id="debugInfo" class="debug-info hidden"></div>
+
     <!-- Connection Status -->
     <div id="connectionStatus" class="connection-status connection-online">
         <i class="fas fa-circle text-xs"></i>
@@ -568,14 +605,23 @@
     <!-- New Chat Modal -->
     <div id="newChatModal" class="modal hidden">
         <div class="modal-content">
-            <h3 class="text-xl font-semibold mb-4">New Chat</h3>
-            <input type="text" id="newChatSearch" placeholder="Search users..." class="w-full px-4 py-2 border border-gray-300 rounded-lg mb-4">
-            <div id="contactsList" class="max-h-64 overflow-y-auto">
-                <!-- Contacts will be listed here -->
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="text-xl font-semibold">New Chat</h3>
+                <button onclick="toggleNewChatModal()" class="text-gray-500 hover:text-gray-700">
+                    <i class="fas fa-times"></i>
+                </button>
             </div>
-            <button onclick="toggleNewChatModal()" class="mt-4 text-gray-500 hover:text-gray-700">
-                Cancel
-            </button>
+            <div class="mb-4">
+                <div class="relative">
+                    <i class="fas fa-search absolute left-3 top-3 text-gray-400"></i>
+                    <input type="text" id="newChatSearch" placeholder="Search users..." class="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent">
+                </div>
+            </div>
+            <div id="contactsList" class="max-h-96 overflow-y-auto">
+                <div class="flex justify-center py-8">
+                    <div class="spinner"></div>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -588,6 +634,9 @@
                 </div>
                 <div class="p-3 hover:bg-gray-100 rounded cursor-pointer" onclick="toggleDarkMode()">
                     <i class="fas fa-moon mr-2"></i> Dark Mode
+                </div>
+                <div class="p-3 hover:bg-gray-100 rounded cursor-pointer" onclick="toggleDebug()">
+                    <i class="fas fa-bug mr-2"></i> Debug Info
                 </div>
                 <div class="p-3 hover:bg-gray-100 rounded cursor-pointer" onclick="logout()">
                     <i class="fas fa-sign-out-alt mr-2"></i> Logout
@@ -615,28 +664,64 @@
         let currentChat = null;
         let messages = [];
         let chats = [];
+        let contacts = [];
         let realtimeChannel = null;
         let typingTimeout = null;
         let onlineUsers = new Set();
+        let debugMode = false;
 
         // Initialize App
         document.addEventListener('DOMContentLoaded', () => {
             checkAuth();
             setupEventListeners();
             initializeEmojis();
-            setupRealtimeSubscriptions();
         });
+
+        // Debug Functions
+        function toggleDebug() {
+            debugMode = !debugMode;
+            const debugInfo = document.getElementById('debugInfo');
+            debugInfo.classList.toggle('hidden', !debugMode);
+            updateDebugInfo();
+            toggleMenu();
+        }
+
+        function updateDebugInfo() {
+            if (!debugMode) return;
+            
+            const debugInfo = document.getElementById('debugInfo');
+            debugInfo.innerHTML = `
+                <div><strong>Current User:</strong> ${currentUser?.id || 'Not logged in'}</div>
+                <div><strong>Contacts Loaded:</strong> ${contacts.length}</div>
+                <div><strong>Chats Loaded:</strong> ${chats.length}</div>
+                <div><strong>Current Chat:</strong> ${currentChat?.id || 'None'}</div>
+                <div><strong>Realtime:</strong> ${realtimeChannel ? 'Connected' : 'Disconnected'}</div>
+            `;
+        }
 
         // Authentication Functions
         async function checkAuth() {
-            const { data: { user } } = await supabase.auth.getUser();
-            if (user) {
-                currentUser = user;
-                showChatApp();
-                loadUserData();
-                loadChats();
-                updateUserOnlineStatus(true);
-            } else {
+            try {
+                const { data: { user }, error } = await supabase.auth.getUser();
+                
+                if (error) {
+                    console.error('Auth check error:', error);
+                    showAuthScreen();
+                    return;
+                }
+                
+                if (user) {
+                    currentUser = user;
+                    showChatApp();
+                    await loadUserData();
+                    await loadChats();
+                    await updateUserOnlineStatus(true);
+                    setupRealtimeSubscriptions();
+                } else {
+                    showAuthScreen();
+                }
+            } catch (error) {
+                console.error('Auth check error:', error);
                 showAuthScreen();
             }
         }
@@ -660,9 +745,9 @@
 
                 currentUser = data.user;
                 showChatApp();
-                loadUserData();
-                loadChats();
-                updateUserOnlineStatus(true);
+                await loadUserData();
+                await loadChats();
+                await updateUserOnlineStatus(true);
                 setupRealtimeSubscriptions();
                 showNotification('Login successful!', 'success');
             } catch (error) {
@@ -694,7 +779,7 @@
                 if (error) throw error;
 
                 // Create user profile
-                await supabase.from('profiles').insert({
+                const { error: profileError } = await supabase.from('profiles').insert({
                     id: data.user.id,
                     username: username,
                     email: email,
@@ -703,11 +788,15 @@
                     last_seen: new Date().toISOString()
                 });
 
+                if (profileError) {
+                    console.error('Profile creation error:', profileError);
+                }
+
                 currentUser = data.user;
                 showChatApp();
-                loadUserData();
-                loadChats();
-                updateUserOnlineStatus(true);
+                await loadUserData();
+                await loadChats();
+                await updateUserOnlineStatus(true);
                 setupRealtimeSubscriptions();
                 showNotification('Registration successful!', 'success');
             } catch (error) {
@@ -753,15 +842,24 @@
         async function loadUserData() {
             if (!currentUser) return;
 
-            const { data: profile } = await supabase
-                .from('profiles')
-                .select('*')
-                .eq('id', currentUser.id)
-                .single();
+            try {
+                const { data: profile, error } = await supabase
+                    .from('profiles')
+                    .select('*')
+                    .eq('id', currentUser.id)
+                    .single();
 
-            if (profile) {
-                document.getElementById('userName').textContent = profile.username;
-                document.getElementById('userAvatar').src = profile.avatar_url;
+                if (error) {
+                    console.error('Profile load error:', error);
+                    return;
+                }
+
+                if (profile) {
+                    document.getElementById('userName').textContent = profile.username;
+                    document.getElementById('userAvatar').src = profile.avatar_url;
+                }
+            } catch (error) {
+                console.error('Profile load error:', error);
             }
         }
 
@@ -896,22 +994,26 @@
         async function loadChats() {
             if (!currentUser) return;
 
-            const { data: chatData, error } = await supabase
-                .from('chats')
-                .select(`
-                    *,
-                    recipient:profiles!chats_recipient_id_fkey(id, username, avatar_url, is_online, last_seen)
-                `)
-                .or(`user_id.eq.${currentUser.id},recipient_id.eq.${currentUser.id}`)
-                .order('updated_at', { ascending: false });
+            try {
+                const { data: chatData, error } = await supabase
+                    .from('chats')
+                    .select(`
+                        *,
+                        recipient:profiles!chats_recipient_id_fkey(id, username, avatar_url, is_online, last_seen)
+                    `)
+                    .or(`user_id.eq.${currentUser.id},recipient_id.eq.${currentUser.id}`)
+                    .order('updated_at', { ascending: false });
 
-            if (error) {
+                if (error) {
+                    console.error('Error loading chats:', error);
+                    return;
+                }
+
+                chats = chatData || [];
+                renderChatList();
+            } catch (error) {
                 console.error('Error loading chats:', error);
-                return;
             }
-
-            chats = chatData || [];
-            renderChatList();
         }
 
         function renderChatList() {
@@ -997,19 +1099,23 @@
         }
 
         async function loadMessages(chatId) {
-            const { data: messageData, error } = await supabase
-                .from('messages')
-                .select('*')
-                .eq('chat_id', chatId)
-                .order('created_at', { ascending: true });
+            try {
+                const { data: messageData, error } = await supabase
+                    .from('messages')
+                    .select('*')
+                    .eq('chat_id', chatId)
+                    .order('created_at', { ascending: true });
 
-            if (error) {
+                if (error) {
+                    console.error('Error loading messages:', error);
+                    return;
+                }
+
+                messages = messageData || [];
+                renderMessages();
+            } catch (error) {
                 console.error('Error loading messages:', error);
-                return;
             }
-
-            messages = messageData || [];
-            renderMessages();
         }
 
         function renderMessages() {
@@ -1180,71 +1286,155 @@
         }
 
         async function loadContacts() {
-            const { data: contacts } = await supabase
-                .from('profiles')
-                .select('*')
-                .neq('id', currentUser.id)
-                .order('username');
-
+            console.log('Loading contacts...');
             const contactsList = document.getElementById('contactsList');
-            contactsList.innerHTML = '';
+            
+            // Show loading state
+            contactsList.innerHTML = `
+                <div class="flex justify-center py-8">
+                    <div class="spinner"></div>
+                </div>
+            `;
 
-            if (!contacts || contacts.length === 0) {
-                contactsList.innerHTML = '<p class="text-gray-500 text-center">No other users found</p>';
-                return;
-            }
+            try {
+                // First, let's check if we can access the profiles table
+                const { data: testData, error: testError } = await supabase
+                    .from('profiles')
+                    .select('count')
+                    .limit(1);
 
-            contacts.forEach(contact => {
-                const contactItem = document.createElement('div');
-                contactItem.className = 'flex items-center gap-3 p-2 hover:bg-gray-100 rounded cursor-pointer';
-                contactItem.onclick = () => createNewChat(contact);
+                if (testError) {
+                    console.error('Profiles table access error:', testError);
+                    contactsList.innerHTML = `
+                        <div class="text-center py-8 text-red-500">
+                            <i class="fas fa-exclamation-triangle text-2xl mb-2"></i>
+                            <p>Error accessing contacts</p>
+                            <p class="text-sm mt-2">${testError.message}</p>
+                        </div>
+                    `;
+                    return;
+                }
 
-                contactItem.innerHTML = `
-                    <div class="relative">
-                        <img src="${contact.avatar_url}" alt="${contact.username}" class="w-10 h-10 rounded-full">
-                        ${contact.is_online ? '<div class="online-indicator"></div>' : ''}
-                    </div>
-                    <div>
-                        <p class="font-semibold">${contact.username}</p>
-                        <p class="text-sm text-gray-500">${contact.is_online ? 'Online' : `Last seen ${formatTime(contact.last_seen)}`}</p>
+                // Load all users except current user
+                const { data: contactsData, error } = await supabase
+                    .from('profiles')
+                    .select('*')
+                    .neq('id', currentUser.id)
+                    .order('username');
+
+                if (error) {
+                    console.error('Error loading contacts:', error);
+                    contactsList.innerHTML = `
+                        <div class="text-center py-8 text-red-500">
+                            <i class="fas fa-exclamation-triangle text-2xl mb-2"></i>
+                            <p>Error loading contacts</p>
+                            <p class="text-sm mt-2">${error.message}</p>
+                        </div>
+                    `;
+                    return;
+                }
+
+                console.log('Contacts loaded:', contactsData);
+                contacts = contactsData || [];
+
+                if (contacts.length === 0) {
+                    contactsList.innerHTML = `
+                        <div class="text-center py-8 text-gray-500">
+                            <i class="fas fa-users text-2xl mb-2"></i>
+                            <p>No other users found</p>
+                            <p class="text-sm mt-2">Create another account to test messaging</p>
+                        </div>
+                    `;
+                    return;
+                }
+
+                // Render contacts
+                contactsList.innerHTML = '';
+                contacts.forEach(contact => {
+                    const contactItem = document.createElement('div');
+                    contactItem.className = 'contact-item';
+                    contactItem.onclick = () => createNewChat(contact);
+
+                    contactItem.innerHTML = `
+                        <div class="relative">
+                            <img src="${contact.avatar_url}" alt="${contact.username}" class="w-12 h-12 rounded-full">
+                            ${contact.is_online ? '<div class="online-indicator"></div>' : ''}
+                        </div>
+                        <div class="flex-1">
+                            <p class="font-semibold">${contact.username}</p>
+                            <p class="text-sm text-gray-500">${contact.is_online ? 'Online' : `Last seen ${formatTime(contact.last_seen)}`}</p>
+                        </div>
+                    `;
+
+                    contactsList.appendChild(contactItem);
+                });
+
+            } catch (error) {
+                console.error('Unexpected error loading contacts:', error);
+                contactsList.innerHTML = `
+                    <div class="text-center py-8 text-red-500">
+                        <i class="fas fa-exclamation-triangle text-2xl mb-2"></i>
+                        <p>Unexpected error</p>
+                        <p class="text-sm mt-2">${error.message}</p>
                     </div>
                 `;
-
-                contactsList.appendChild(contactItem);
-            });
+            }
         }
 
         async function createNewChat(contact) {
-            // Check if chat already exists
-            const { data: existingChat } = await supabase
-                .from('chats')
-                .select('*')
-                .or(`(user_id.eq.${currentUser.id},recipient_id.eq.${contact.id}),(user_id.eq.${contact.id},recipient_id.eq.${currentUser.id})`)
-                .single();
-
-            if (existingChat) {
-                openChat(existingChat);
-            } else {
-                // Create new chat
-                const { data: newChat } = await supabase
+            console.log('Creating new chat with:', contact);
+            
+            try {
+                // Check if chat already exists
+                const { data: existingChat, error: checkError } = await supabase
                     .from('chats')
-                    .insert({
-                        user_id: currentUser.id,
-                        recipient_id: contact.id
-                    })
-                    .select(`
-                        *,
-                        recipient:profiles!chats_recipient_id_fkey(id, username, avatar_url, is_online, last_seen)
-                    `)
+                    .select('*')
+                    .or(`(user_id.eq.${currentUser.id},recipient_id.eq.${contact.id}),(user_id.eq.${contact.id},recipient_id.eq.${currentUser.id})`)
                     .single();
 
-                if (newChat) {
-                    openChat(newChat);
+                if (checkError && checkError.code !== 'PGRST116') {
+                    console.error('Error checking existing chat:', checkError);
+                    showNotification('Error checking chat', 'error');
+                    return;
                 }
-            }
 
-            toggleNewChatModal();
-            await loadChats();
+                if (existingChat) {
+                    console.log('Chat already exists:', existingChat);
+                    openChat(existingChat);
+                } else {
+                    // Create new chat
+                    const { data: newChat, error: createError } = await supabase
+                        .from('chats')
+                        .insert({
+                            user_id: currentUser.id,
+                            recipient_id: contact.id
+                        })
+                        .select(`
+                            *,
+                            recipient:profiles!chats_recipient_id_fkey(id, username, avatar_url, is_online, last_seen)
+                        `)
+                        .single();
+
+                    if (createError) {
+                        console.error('Error creating chat:', createError);
+                        showNotification('Failed to create chat', 'error');
+                        return;
+                    }
+
+                    console.log('New chat created:', newChat);
+                    
+                    if (newChat) {
+                        openChat(newChat);
+                    }
+                }
+
+                toggleNewChatModal();
+                await loadChats();
+                
+            } catch (error) {
+                console.error('Error in createNewChat:', error);
+                showNotification('Failed to create chat', 'error');
+            }
         }
 
         // Emoji Picker
@@ -1367,6 +1557,15 @@
                 renderFilteredChats(filteredChats);
             });
 
+            // New chat search
+            document.getElementById('newChatSearch').addEventListener('input', (e) => {
+                const searchTerm = e.target.value.toLowerCase();
+                const filteredContacts = contacts.filter(contact => 
+                    contact.username.toLowerCase().includes(searchTerm)
+                );
+                renderFilteredContacts(filteredContacts);
+            });
+
             // Hide modals on click outside
             document.addEventListener('click', (e) => {
                 if (!e.target.closest('.modal-content') && !e.target.closest('button')) {
@@ -1446,6 +1645,42 @@
                 chatList.appendChild(chatItem);
             });
         }
+
+        function renderFilteredContacts(filteredContacts) {
+            const contactsList = document.getElementById('contactsList');
+            
+            if (filteredContacts.length === 0) {
+                contactsList.innerHTML = `
+                    <div class="text-center py-8 text-gray-500">
+                        <p>No contacts found</p>
+                    </div>
+                `;
+                return;
+            }
+
+            contactsList.innerHTML = '';
+            filteredContacts.forEach(contact => {
+                const contactItem = document.createElement('div');
+                contactItem.className = 'contact-item';
+                contactItem.onclick = () => createNewChat(contact);
+
+                contactItem.innerHTML = `
+                    <div class="relative">
+                        <img src="${contact.avatar_url}" alt="${contact.username}" class="w-12 h-12 rounded-full">
+                        ${contact.is_online ? '<div class="online-indicator"></div>' : ''}
+                    </div>
+                    <div class="flex-1">
+                        <p class="font-semibold">${contact.username}</p>
+                        <p class="text-sm text-gray-500">${contact.is_online ? 'Online' : `Last seen ${formatTime(contact.last_seen)}`}</p>
+                    </div>
+                `;
+
+                contactsList.appendChild(contactItem);
+            });
+        }
+
+        // Update debug info periodically
+        setInterval(updateDebugInfo, 2000);
     </script>
 </body>
 </html>
