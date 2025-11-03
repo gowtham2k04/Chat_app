@@ -464,6 +464,28 @@
             background: #f3f4f6;
             color: #6b7280;
         }
+
+        /* Chat Container Fix */
+        .chat-container {
+            position: relative;
+            height: 100%;
+            width: 100%;
+        }
+
+        .chat-view {
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* Fix for mobile view */
+        @media (max-width: 768px) {
+            .chat-container {
+                position: absolute;
+                top: 0;
+                left: 0;
+            }
+        }
     </style>
 </head>
 <body class="bg-gray-100">
@@ -495,7 +517,7 @@
                 </div>
                 <div>
                     <label class="block text-sm font-medium text-gray-700 mb-2">Password</label>
-                    <input type="password" id="loginPassword" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent" placeholder="••••••••">
+                    <input type="password" id="loginPassword" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent" placeholder="•••••••••">
                 </div>
                 <button onclick="login()" class="w-full bg-green-500 text-white py-3 rounded-lg font-semibold hover:bg-green-600 transition duration-200">
                     Sign In
@@ -518,7 +540,7 @@
                 </div>
                 <div>
                     <label class="block text-sm font-medium text-gray-700 mb-2">Password</label>
-                    <input type="password" id="registerPassword" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent" placeholder="••••••••">
+                    <input type="password" id="registerPassword" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent" placeholder="•••••••••">
                 </div>
                 <button onclick="register()" class="w-full bg-green-500 text-white py-3 rounded-lg font-semibold hover:bg-green-600 transition duration-200">
                     Create Account
@@ -581,7 +603,7 @@
             </div>
 
             <!-- Chat View (Hidden by default) -->
-            <div id="chatView" class="hidden flex-1 flex flex-col">
+            <div id="chatView" class="chat-view hidden flex-1 flex flex-col">
                 <!-- Chat Header -->
                 <div class="chat-header bg-white px-6 py-4 flex items-center justify-between shadow-sm">
                     <div class="flex items-center gap-3">
@@ -1156,12 +1178,11 @@
 
             try {
                 logDebug('Loading chats...');
+                
+                // Get all chats where current user is either sender or recipient
                 const { data: chatData, error } = await supabase
                     .from('chats')
-                    .select(`
-                        *,
-                        recipient:profiles!chats_recipient_id_fkey(id, username, avatar_url, is_online, last_seen)
-                    `)
+                    .select('*')
                     .or(`user_id.eq.${currentUser.id},recipient_id.eq.${currentUser.id}`)
                     .order('updated_at', { ascending: false });
 
@@ -1170,7 +1191,32 @@
                     return;
                 }
 
-                chats = chatData || [];
+                // Process each chat to get the other user's profile
+                const processedChats = [];
+                for (const chat of chatData || []) {
+                    // Determine the other user's ID
+                    const otherUserId = chat.user_id === currentUser.id ? chat.recipient_id : chat.user_id;
+                    
+                    // Get the other user's profile
+                    const { data: otherUserProfile, error: profileError } = await supabase
+                        .from('profiles')
+                        .select('*')
+                        .eq('id', otherUserId)
+                        .single();
+                    
+                    if (profileError) {
+                        logDebug('Error loading profile for chat: ' + profileError.message);
+                        continue;
+                    }
+                    
+                    // Add the other user's profile to the chat data
+                    processedChats.push({
+                        ...chat,
+                        otherUser: otherUserProfile
+                    });
+                }
+
+                chats = processedChats;
                 logDebug('Chats loaded: ' + chats.length);
                 renderChatList();
             } catch (error) {
@@ -1203,8 +1249,7 @@
                 }
                 chatItem.onclick = () => openChat(chat);
 
-                // Determine which user is the other person in the chat
-                const otherUser = chat.user_id === currentUser.id ? chat.recipient : chat.recipient;
+                const otherUser = chat.otherUser;
                 
                 const lastMessage = chat.last_message || 'Start a conversation';
                 const time = formatTime(chat.updated_at);
@@ -1232,10 +1277,10 @@
         }
 
         async function openChat(chat) {
+            logDebug('Opening chat: ' + chat.id);
             currentChat = chat;
             
-            // Determine which user is the other person in the chat
-            const otherUser = chat.user_id === currentUser.id ? chat.recipient : chat.recipient;
+            const otherUser = chat.otherUser;
             
             // Update UI
             document.getElementById('emptyState').classList.add('hidden');
@@ -1253,7 +1298,6 @@
             // Mobile view handling
             if (window.innerWidth < 768) {
                 document.getElementById('sidebar').classList.add('hidden');
-                document.getElementById('chatContainer').classList.remove('hidden');
             }
 
             // Update chat list selection
@@ -1561,10 +1605,7 @@
                             user_id: currentUser.id,
                             recipient_id: contact.id
                         })
-                        .select(`
-                            *,
-                            recipient:profiles!chats_recipient_id_fkey(id, username, avatar_url, is_online, last_seen)
-                        `)
+                        .select('*')
                         .single();
 
                     if (createError) {
@@ -1576,7 +1617,19 @@
                     logDebug('New chat created: ' + newChat.id);
                     
                     if (newChat) {
-                        openChat(newChat);
+                        // Get the other user's profile
+                        const { data: otherUserProfile, error: profileError } = await supabase
+                            .from('profiles')
+                            .select('*')
+                            .eq('contact.id')
+                            .single();
+                        
+                        if (!profileError) {
+                            openChat({
+                                ...newChat,
+                                otherUser: otherUserProfile
+                            });
+                        }
                     }
                 }
 
@@ -1605,7 +1658,7 @@
 
         // Emoji Picker
         function initializeEmojis() {
-            const emojis = ['😀', '😃', '😄', '😁', '😆', '😅', '😂', '🤣', '😊', '😇', '🙂', '🙃', '😉', '😌', '😍', '🥰', '😘', '😗', '😙', '😚', '😋', '😛', '😜', '🤪', '😝', '🤑', '🤗', '🤭', '🤫', '🤔', '🤐', '🤨', '😐', '😑', '😶', '😏', '😒', '🙄', '😬', '🤥', '😌', '😔', '😪', '🤤', '😴', '😷', '🤒', '🤕', '🤢', '🤮', '🤧', '🥵', '🥶', '🥴', '😵', '🤯', '🤠', '🥳', '😎', '🤓', '🧐', '😕', '😟', '🙁', '☹️', '😮', '😯', '😲', '😳', '🥺', '😦', '😧', '😨', '😰', '😥', '😢', '😭', '😱', '😖', '😣', '😞', '😓', '😩', '😫', '🥱', '😤', '😡', '😠', '🤬', '😈', '👿', '💀', '☠️', '💩', '🤡', '👹', '👺', '👻', '👽', '👾', '🤖', '❤️', '🧡', '💛', '💚', '💙', '💜', '🖤', '🤍', '🤎', '💔', '❣️', '💕', '💞', '💓', '💗', '💖', '💘', '💝'];
+            const emojis = ['😀', '😃', '😄', '😁', '😆', '😅', '😂', '🤣', '😊', '😇', '🙂', '🙃', '😉', '😌', '😍', '🥰', '😘', '😗', '😙', '😚', '😋', '😋', '😛', '😜', '🤪', '😝', '🤑', '🤗', '🤭', '🤫', '🤔', '🤐', '🤨', '😐', '😑', '😶', '😏', '😒', '🙄', '😬', '🤥', '😌', '😔', '😪', '🤤', '😴', '😷', '🤒', '🤕', '🤢', '🤮', '🤧', '🥵', '🥶', '🥴', '😵', '🤯', '🤠', '🥳', '😎', '🤓', '🧐', '😕', '😟', '🙁', '☹️', '😮', '😯', '😲', '😳', '🥺', '😦', '😧', '😨', '😰', '😥', '😢', '😭', '😱', '😖', '😣', '😞', '😓', '😩', '😫', '🥱', '😤', '😡', '😠', '🤬', '😈', '👿', '💀', '☠️', '💩', '🤡', '👹', '👺', '👻', '👽', '👾', '🤖', '❤️', '🧡', '💛', '💚', '💙', '💜', '🖤', '🤍', '🤎', '💔', '❣️', '💕', '💞', '💓', '💗', '💖', '💘', '💝'];
             
             const emojiPicker = document.getElementById('emojiPicker');
             emojis.forEach(emoji => {
@@ -1678,7 +1731,6 @@
             document.getElementById('emptyState').classList.remove('hidden');
             document.getElementById('chatView').classList.add('hidden');
             document.getElementById('sidebar').classList.remove('hidden');
-            document.getElementById('chatContainer').classList.add('hidden');
             currentChat = null;
             renderChatList();
         }
@@ -1719,7 +1771,7 @@
             document.getElementById('searchInput').addEventListener('input', (e) => {
                 const searchTerm = e.target.value.toLowerCase();
                 const filteredChats = chats.filter(chat => {
-                    const otherUser = chat.user_id === currentUser.id ? chat.recipient : chat.recipient;
+                    const otherUser = chat.user_id === currentUser.id ? chat.recipient : chat.user_id;
                     return otherUser.username.toLowerCase().includes(searchTerm);
                 });
                 renderFilteredChats(filteredChats);
@@ -1752,7 +1804,6 @@
             window.addEventListener('resize', () => {
                 if (window.innerWidth >= 768) {
                     document.getElementById('sidebar').classList.remove('hidden');
-                    document.getElementById('chatContainer').classList.remove('hidden');
                 }
             });
 
@@ -1787,7 +1838,7 @@
                 }
                 chatItem.onclick = () => openChat(chat);
 
-                const otherUser = chat.user_id === currentUser.id ? chat.recipient : chat.recipient;
+                const otherUser = chat.user_id === currentUser.id ? chat.recipient : chat.user_id;
                 
                 const lastMessage = chat.last_message || 'Start a conversation';
                 const time = formatTime(chat.updated_at);
@@ -1796,7 +1847,7 @@
                 chatItem.innerHTML = `
                     <div class="relative">
                         <img src="${otherUser.avatar_url}" alt="${otherUser.username}" class="w-12 h-12 rounded-full">
-                        ${otherUser.is_online ? '<div class="online-indicator"></div>' : ''}
+                            ${otherUser.is_online ? '<div class="online-indicator"></div>' : ''}
                     </div>
                     <div class="flex-1">
                         <div class="flex justify-between items-baseline">
@@ -1835,7 +1886,7 @@
                 contactItem.innerHTML = `
                     <div class="relative">
                         <img src="${contact.avatar_url}" alt="${contact.username}" class="w-12 h-12 rounded-full">
-                        ${contact.is_online ? '<div class="online-indicator"></div>' : ''}
+                            ${contact.is_online ? '<div class="online-indicator"></div>' : ''}
                     </div>
                     <div class="flex-1">
                         <p class="font-semibold">${contact.username}</p>
